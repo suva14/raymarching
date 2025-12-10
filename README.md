@@ -26,7 +26,7 @@ Due to WebGPU security protocols (COOP/COEP) and local file fetching, this proje
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/suva14/raymarching.git](https://github.com/suva14/raymarching.git)
+    git clone https://github.com/suva14/raymarching.git
     cd raymarching
     ```
 
