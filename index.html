@@ -8,29 +8,71 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/simple.min.js"></script>
-    <style>
-      /* --- THEME GRUVBOX --- */
+   <style>
+      /* --- CODE MIRROR & THEME --- */
       .cm-s-gruvbox-dark-hard.CodeMirror { background-color: #1d2021; color: #ebdbb2; height: 100%; }
       .cm-s-gruvbox-dark-hard .CodeMirror-gutters { background-color: #1d2021; border-right: 1px solid #3c3836; }
-      
-      /* AJOUT DEMANDÉ : Taille police CodeMirror */
-      .CodeMirror { font-size: 16px; }
+      .CodeMirror { font-size: 16px !important; }
 
-      html, body { 
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden; 
-        }
+      /* --- LAYOUT ROBUSTE (Fix pour GitHub Pages) --- */
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #000;
+      }
+
+      /* On force le Flexbox même si Tailwind plante */
+      #container {
+        display: flex;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Zone Canvas */
+      #canvas-container {
+        position: relative; /* CRUCIAL pour que les boutons ne volent pas partout */
+        width: 50%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #000;
+      }
+
+      /* Zone Editeur */
+      #editor-container {
+        display: flex;
+        flex-direction: column;
+        width: 50%;
+        height: 100%;
+        border-left: 1px solid #3c3836;
+        background-color: #1f2937; /* Fallback gray-800 */
+      }
+
+      #code-editor-container {
+        flex: 1;
+        height: 100%;
+        overflow: hidden;
+      }
+
       #code-editor-container .CodeMirror { height: 100%; }
-      
+
+      /* Gestion Portrait / Mobile via CSS standard */
+      @media (orientation: portrait) {
+        #container { flex-direction: column; }
+        #canvas-container { width: 100%; height: 50%; }
+        #editor-container { width: 100%; height: 50%; border-left: none; border-top: 1px solid #3c3836; }
+      }
+
+      /* --- UI ELEMENTS --- */
       input[type=range] { width: 100%; height: 4px; accent-color: #fabd2f; cursor: pointer; background: #3c3836; border-radius: 2px; }
       input[type=color] { border: 1px solid #3c3836; width: 100%; height: 20px; background: none; cursor: pointer; padding: 0; }
       
       .obj-item { border-bottom: 1px solid #3c3836; padding: 8px; font-size: 18px; }
       .obj-item:hover { background-color: #282828; }
-      /* Mise en avant de l'objet actif */
       .obj-selected { background-color: #32302f; border-left: 4px solid #fabd2f; }
     </style>
   </head>
