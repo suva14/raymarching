@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGPU Scene Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/simple.min.js"></script>
+    <style>
+      /* --- THEME GRUVBOX --- */
+      .cm-s-gruvbox-dark-hard.CodeMirror { background-color: #1d2021; color: #ebdbb2; height: 100%; }
+      .cm-s-gruvbox-dark-hard .CodeMirror-gutters { background-color: #1d2021; border-right: 1px solid #3c3836; }
+      body { overflow: hidden; height: 100vh; width: 100vw; background: #000; }
+      #code-editor-container .CodeMirror { height: 100%; }
+      input[type=range] { width: 100%; height: 4px; accent-color: #fabd2f; cursor: pointer; background: #3c3836; border-radius: 2px; }
+      input[type=color] { border: 1px solid #3c3836; width: 100%; height: 20px; background: none; cursor: pointer; padding: 0; }
+      .obj-item { border-bottom: 1px solid #3c3836; padding: 8px; font-size: 12px; }
+      .obj-item:hover { background-color: #282828; }
+      .obj-selected { background-color: #32302f; border-left: 3px solid #fabd2f; }
+    </style>
+  </head>
+  <body class="font-mono bg-gray-900 text-white">
+    
+    <div id="container" class="flex w-full h-full portrait:flex-col landscape:flex-row">
+      <div id="canvas-container" class="relative flex items-center justify-center bg-black portrait:w-full portrait:h-1/2 landscape:w-1/2 landscape:h-full">
+        <canvas id="canvas" class="block outline-none cursor-crosshair"></canvas>
+        <div id="error-message" class="absolute bottom-2.5 left-2.5 right-2.5 text-red-500 text-xs bg-black/90 p-2 rounded hidden max-h-32 overflow-y-auto z-10 border border-red-900"></div>
+        <button id="fullscreen-btn" class="absolute bottom-2.5 right-2.5 p-2 bg-black/60 hover:bg-black/80 text-white rounded transition-all z-20 border border-white/20">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        </button>
+      </div>
+
+      <div id="editor-container" class="flex flex-col bg-gray-800 portrait:w-full portrait:h-1/2 landscape:w-1/2 landscape:h-full border-l border-[#3c3836]">
+        <div class="p-2 flex flex-col gap-2 shrink-0" style="background: #1d2021; border-bottom: 1px solid #3c3836;">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-[#ebdbb2] text-sm">WebGPU Scene Editor</span>
+            <div class="flex gap-2">
+                <button id="add-sphere-btn" class="px-2 py-1 text-xs rounded border border-[#665c54] text-[#ebdbb2] hover:bg-[#3c3836] transition-colors">+ Sphere</button>
+                <button id="add-box-btn" class="px-2 py-1 text-xs rounded border border-[#665c54] text-[#ebdbb2] hover:bg-[#3c3836] transition-colors">+ Box</button>
+                <button id="compile-btn" class="px-3 py-1 text-xs font-bold rounded bg-[#689d6a] text-[#1d2021] hover:bg-[#8ec07c] transition-colors">COMPILE</button>
+            </div>
+          </div>
+          <div class="flex justify-between text-xs text-[#a89984]">
+             <span>FPS: <span id="fps" class="text-[#d3869b]">0</span></span>
+             <span id="cam-info">Drag empty space to rotate</span>
+          </div>
+        </div>
+
+        <div class="flex flex-1 overflow-hidden relative">
+          <div id="code-editor-container" class="flex-1 h-full overflow-hidden">
+            <textarea id="code-editor"></textarea>
+          </div>
+          <div id="uniforms-panel" class="flex h-full border-l border-[#3c3836] transition-all duration-300" style="width: 280px; background: #1d2021;">
+            <div id="panel-toggle" class="w-6 cursor-pointer hover:bg-[#3c3836] flex items-center justify-center text-[#a89984] border-r border-[#3c3836]">▶</div>
+            <div id="panel-content" class="flex-1 flex flex-col h-full overflow-hidden">
+              <div class="p-2 font-bold text-xs text-[#ebdbb2] bg-[#282828] border-b border-[#3c3836]">SCENE OBJECTS</div>
+              <div id="scene-ui-content" class="flex-1 overflow-y-auto p-0"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // --- 1. CONFIGURATION & STATE ---
+      const MAX_OBJECTS = 16;
+      
+      // Structure: type 0=Sphere, 1=Box. 
+      // p1, p2, p3 sont les paramètres de taille (Radius ou Dimensions XYZ)
+      const sceneState = {
+        objects: [
+          { type: 0, x: 0.0, y: 0.0, z: 0.0, p1: 1.0, p2: 0, p3: 0, color: "#fb4934" }, // Sphere Rouge
+          { type: 1, x: 2.0, y: 0.5, z: 1.0, p1: 0.8, p2: 0.8, p3: 0.8, color: "#b8bb26" }, // Box Verte
+          { type: 0, x: -1.5, y: -0.2, z: -0.5, p1: 0.6, p2: 0, p3: 0, color: "#83a598" } // Sphere Bleue
+        ],
+        selectedId: -1
+      };
+
+      const camera = { yaw: 0.5, pitch: 0.5, dist: 6.0 };
+      let sceneDataDirty = true;
+      let mouse = { x: 0, y: 0, down: false, drag: false, lx: 0, ly: 0 };
+
+      // --- 2. EDITOR SETUP ---
+      CodeMirror.defineSimpleMode("wgsl", {
+        start: [
+          { regex: /\b(fn|let|var|const|if|else|for|struct|return|loop|continue|break)\b/, token: "keyword" },
+          { regex: /\b(vec2|vec3|vec4|f32|u32|i32)\b/, token: "type" },
+          { regex: /\b\d+\.?\d*\b/, token: "number" },
+          { regex: /\/\/.*/, token: "comment" },
+        ],
+      });
+      const editor = CodeMirror.fromTextArea(document.getElementById("code-editor"), {
+        mode: "wgsl", theme: "gruvbox-dark-hard", lineNumbers: true, lineWrapping: true
+      });
+
+      // --- 3. UI GENERATION ---
+      const $ = (id) => document.getElementById(id);
+
+      function renderSceneUI() {
+        const container = $('scene-ui-content');
+        container.innerHTML = '';
+        
+        sceneState.objects.forEach((obj, idx) => {
+          const isSelected = idx === sceneState.selectedId;
+          const label = obj.type === 0 ? "Sphere" : "Box";
+          const icon = obj.type === 0 ? "●" : "■";
+          
+          const div = document.createElement('div');
+          div.className = `obj-item ${isSelected ? 'obj-selected' : ''}`;
+          
+          // UI Dynamique selon le type
+          let paramsUI = '';
+          if(obj.type === 0) { // Sphere
+              paramsUI = `<div class="flex items-center gap-2"><span class="w-4 text-[#928374] text-[10px]">Rad</span><input type="range" min="0.1" max="3" step="0.1" value="${obj.p1}" oninput="upObject(${idx},'p1',this.value)"></div>`;
+          } else { // Box
+              paramsUI = `
+              <div class="flex items-center gap-2"><span class="w-4 text-[#928374] text-[10px]">SX</span><input type="range" min="0.1" max="2" step="0.1" value="${obj.p1}" oninput="upObject(${idx},'p1',this.value)"></div>
+              <div class="flex items-center gap-2"><span class="w-4 text-[#928374] text-[10px]">SY</span><input type="range" min="0.1" max="2" step="0.1" value="${obj.p2}" oninput="upObject(${idx},'p2',this.value)"></div>
+              <div class="flex items-center gap-2"><span class="w-4 text-[#928374] text-[10px]">SZ</span><input type="range" min="0.1" max="2" step="0.1" value="${obj.p3}" oninput="upObject(${idx},'p3',this.value)"></div>`;
+          }
+
+          div.innerHTML = `
+            <div class="flex justify-between items-center mb-1 text-[#d3869b] font-bold cursor-pointer hover:text-white" onclick="selectObject(${idx})">
+              <span>${icon} ${label} ${idx}</span>
+              <button onclick="event.stopPropagation(); rmObject(${idx})" class="text-[#fb4934] hover:text-white font-mono">×</button>
+            </div>
+            ${isSelected ? `
+            <div class="space-y-1 opacity-90 transition-all">
+              <div class="flex items-center gap-2"><span class="w-4 text-[#928374] text-[10px]">X</span><input type="range" min="-5" max="5" step="0.1" value="${obj.x}" oninput="upObject(${idx},'x',this.value)"></div>
+              <div class="flex items-center gap-2"><span class="w-4 text-[#928374] text-[10px]">Y</span><input type="range" min="-2" max="5" step="0.1" value="${obj.y}" oninput="upObject(${idx},'y',this.value)"></div>
+              <div class="flex items-center gap-2"><span class="w-4 text-[#928374] text-[10px]">Z</span><input type="range" min="-5" max="5" step="0.1" value="${obj.z}" oninput="upObject(${idx},'z',this.value)"></div>
+              ${paramsUI}
+              <div class="flex items-center gap-2 mt-2"><span class="w-4 text-[#928374] text-[10px]">Col</span><input type="color" value="${obj.color}" oninput="upObject(${idx},'color',this.value)"></div>
+            </div>` : '<div class="text-[10px] text-[#928374] pl-1">Click to edit...</div>'}
+            `;
+          container.appendChild(div);
+        });
+        
+        if (sceneState.selectedId !== -1 && container.children[sceneState.selectedId]) {
+             container.children[sceneState.selectedId].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+
+      window.upObject = (i, k, v) => { sceneState.objects[i][k] = k === 'color' ? v : parseFloat(v); sceneDataDirty = true; };
+      window.rmObject = (i) => { sceneState.objects.splice(i, 1); sceneState.selectedId = -1; renderSceneUI(); sceneDataDirty = true; };
+      window.selectObject = (i) => { sceneState.selectedId = i; renderSceneUI(); };
+      
+      const addObject = (type) => {
+          if(sceneState.objects.length >= MAX_OBJECTS) return;
+          const obj = { type, x:0, y:0, z:0, p1:0.5, p2:0.5, p3:0.5, color:"#ffffff" };
+          sceneState.objects.push(obj);
+          selectObject(sceneState.objects.length - 1);
+          sceneDataDirty = true;
+      };
+      $('add-sphere-btn').onclick = () => addObject(0);
+      $('add-box-btn').onclick = () => addObject(1);
+
+      // --- 4. PICKING LOGIC (JS RAYMARCHER) ---
+      const vLen = (x,y,z) => Math.sqrt(x*x+y*y+z*z);
+      const sdSphereJS = (px, py, pz, r) => vLen(px,py,pz) - r;
+      const sdBoxJS = (px, py, pz, bx, by, bz) => {
+          let dx = Math.abs(px) - bx; let dy = Math.abs(py) - by; let dz = Math.abs(pz) - bz;
+          let mx = Math.max(dx, 0); let my = Math.max(dy, 0); let mz = Math.max(dz, 0);
+          return vLen(mx,my,mz) + Math.min(Math.max(dx, Math.max(dy, dz)), 0.0);
+      };
+
+      function pickObjectFromMouse(mx, my, width, height) {
+          const yaw = camera.yaw, pitch = camera.pitch;
+          const cx = Math.sin(yaw) * Math.cos(pitch) * camera.dist;
+          const cy = Math.sin(pitch) * camera.dist;
+          const cz = Math.cos(yaw) * Math.cos(pitch) * camera.dist;
+          
+          let fx = -cx, fy = -cy, fz = -cz; const flen = vLen(fx,fy,fz); fx/=flen; fy/=flen; fz/=flen;
+          let rx = fz, ry = 0, rz = -fx; const rlen = vLen(rx,ry,rz); rx/=rlen; ry/=rlen; rz/=rlen;
+          let ux = ry*fz - rz*fy, uy = rz*fx - rx*fz, uz = rx*fy - ry*fx;
+          
+          const aspect = width / height, uvx = ((mx / width) * 2 - 1) * aspect, uvy = -((my / height) * 2 - 1);
+          const focal = 1.5;
+          let rdx = rx*uvx + ux*uvy + fx*focal, rdy = ry*uvx + uy*uvy + fy*focal, rdz = rz*uvx + uz*uvy + fz*focal;
+          const rdlen = vLen(rdx,rdy,rdz); rdx/=rdlen; rdy/=rdlen; rdz/=rdlen;
+
+          let t = 0;
+          for(let i=0; i<64; i++) {
+              let px = cx + rdx*t, py = cy + rdy*t, pz = cz + rdz*t;
+              let d = 1000.0, id = -1;
+              if ((py + 1.0) < d) d = py + 1.0; // Ground
+
+              for(let j=0; j<sceneState.objects.length; j++) {
+                  const o = sceneState.objects[j];
+                  let od = 0;
+                  if(o.type === 0) od = sdSphereJS(px-o.x, py-o.y, pz-o.z, o.p1);
+                  else             od = sdBoxJS(px-o.x, py-o.y, pz-o.z, o.p1, o.p2, o.p3);
+                  if(od < d) { d = od; id = j; }
+              }
+
+              if(d < 0.01) return id;
+              t += d; if(t > 50) break;
+          }
+          return -1;
+      }
+
+      // --- 5. INTERACTION ---
+      const canvas = $('canvas');
+      canvas.addEventListener('mousedown', (e) => { mouse.down = true; mouse.drag = false; mouse.lx = e.clientX; mouse.ly = e.clientY; });
+      window.addEventListener('mousemove', (e) => {
+         if(!mouse.down) return;
+         if(Math.abs(e.clientX - mouse.lx) > 2 || Math.abs(e.clientY - mouse.ly) > 2) mouse.drag = true;
+         if(mouse.drag) {
+            const sens = 0.005; camera.yaw -= (e.clientX - mouse.lx) * sens;
+            camera.pitch = Math.max(0.01, Math.min(1.5, camera.pitch + (e.clientY - mouse.ly) * sens));
+            mouse.lx = e.clientX; mouse.ly = e.clientY;
+            $('cam-info').textContent = `Yaw: ${camera.yaw.toFixed(2)}`;
+         }
+      });
+      window.addEventListener('mouseup', (e) => {
+         if(mouse.down && !mouse.drag) {
+             const r = canvas.getBoundingClientRect();
+             const hitId = pickObjectFromMouse(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
+             if(hitId !== -1) selectObject(hitId); else { sceneState.selectedId = -1; renderSceneUI(); }
+         }
+         mouse.down = false;
+      });
+      canvas.addEventListener('wheel', (e) => { e.preventDefault(); camera.dist = Math.max(2, Math.min(20, camera.dist + e.deltaY * 0.01)); }, {passive:false});
+
+      // --- 6. WEBGPU ENGINE ---
+      let device, ctx, pipe, bg0, bg1, uBuf, sBuf;
+      let startTime = performance.now(), lastTime = startTime;
+
+      async function initWebGPU() {
+        if (!navigator.gpu) return fail("WebGPU not supported");
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return fail("No GPU adapter");
+        device = await adapter.requestDevice();
+        context = canvas.getContext("webgpu");
+        context.configure({ device, format: navigator.gpu.getPreferredCanvasFormat() });
+
+        uBuf = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        sBuf = device.createBuffer({ size: 2048, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+
+        renderSceneUI();
+        updateSceneBuffer();
+
+        // Load Shader
+        try {
+          const res = await fetch('./shaders/raymarch.wgsl');
+          const code = res.ok ? await res.text() : `// Error loading shader`;
+          if(res.ok) { editor.setValue(code); await compileShader(code); }
+        } catch(e) { console.warn("Fetch failed, using editor content"); }
+        
+        requestAnimationFrame(render);
+      }
+
+      function updateSceneBuffer() {
+        if(!device) return;
+        const data = new ArrayBuffer(2048);
+        const view = new DataView(data);
+        
+        sceneState.objects.forEach((o, i) => {
+          // IMPORTANT: Stride de 48 bytes (3 x vec4)
+          // WGSL struct alignement (16 bytes)
+          const base = i * 48; 
+          
+          // Slot 1: Pos (x,y,z) + Type (w)
+          view.setFloat32(base + 0, o.x, true); 
+          view.setFloat32(base + 4, o.y, true); 
+          view.setFloat32(base + 8, o.z, true); 
+          view.setFloat32(base + 12, o.type, true); // Shape Type
+          
+          // Slot 2: Params (p1, p2, p3) + Padding
+          view.setFloat32(base + 16, o.p1, true); 
+          view.setFloat32(base + 20, o.p2, true); 
+          view.setFloat32(base + 24, o.p3, true);
+          view.setFloat32(base + 28, 0, true);
+          
+          // Slot 3: Color (r, g, b) + Padding
+          const r = parseInt(o.color.substr(1,2),16)/255;
+          const g = parseInt(o.color.substr(3,2),16)/255;
+          const b = parseInt(o.color.substr(5,2),16)/255;
+          view.setFloat32(base + 32, r, true); 
+          view.setFloat32(base + 36, g, true); 
+          view.setFloat32(base + 40, b, true);
+          view.setFloat32(base + 44, 0, true);
+        });
+        
+        // Count après les données
+        view.setUint32(1024, sceneState.objects.length, true);
+        device.queue.writeBuffer(sceneBuffer, 0, data);
+        sceneDataDirty = false;
+      }
+
+      async function compileShader(code) {
+        const start = performance.now();
+        $('error-message').classList.add("hidden");
+        const vert = `@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> { var p = array<vec2<f32>,3>(vec2(-1,-1), vec2(3,-1), vec2(-1,3)); return vec4(p[i],0,1); }`;
+        const module = device.createShaderModule({ code: vert + "\n" + code });
+        const info = await module.getCompilationInfo();
+        const errs = info.messages.filter(m => m.type === "error");
+        if(errs.length > 0) {
+           const off = vert.split('\n').length;
+           $('error-message').innerText = errs.map(e => `Line ${e.lineNum-off}: ${e.message}`).join('\n');
+           $('error-message').classList.remove("hidden");
+           return;
+        }
+
+        const layout = device.createPipelineLayout({ bindGroupLayouts: [
+           device.createBindGroupLayout({ entries: [{binding:0, visibility:GPUShaderStage.FRAGMENT, buffer:{type:"uniform"}}] }),
+           device.createBindGroupLayout({ entries: [{binding:0, visibility:GPUShaderStage.FRAGMENT, buffer:{type:"uniform"}}] })
+        ]});
+        
+        pipeline = device.createRenderPipeline({
+           layout, vertex: { module, entryPoint: "vs_main" },
+           fragment: { module, entryPoint: "fs_main", targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }] },
+           primitive: { topology: "triangle-list" }
+        });
+        bindGroup0 = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{binding:0, resource:{buffer:uniformBuffer}}] });
+        bindGroup1 = device.createBindGroup({ layout: pipeline.getBindGroupLayout(1), entries: [{binding:0, resource:{buffer:sceneBuffer}}] });
+        
+        $('compile-btn').textContent = "COMPILED";
+        setTimeout(() => $('compile-btn').textContent = "COMPILE", 2000);
+      }
+
+      function render() {
+        const now = performance.now(); const dt = (now - lastTime) / 1000; lastTime = now;
+        const container = $('canvas-container');
+        const dpr = devicePixelRatio || 1;
+        const dw = container.clientWidth * dpr, dh = container.clientHeight * dpr;
+        if (canvas.width !== dw || canvas.height !== dh) { canvas.width = dw; canvas.height = dh; }
+
+        const sysData = new Float32Array([
+            canvas.width, canvas.height, 
+            (now - startTime)/1000, dt, 
+            camera.yaw, camera.pitch, camera.dist, 0
+        ]);
+        device.queue.writeBuffer(uniformBuffer, 0, sysData);
+        if(sceneDataDirty) updateSceneBuffer();
+        $('fps').textContent = Math.round(1/dt);
+
+        const enc = device.createCommandEncoder();
+        const pass = enc.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp:"clear", clearValue:{r:0,g:0,b:0,a:1}, storeOp:"store" }] });
+        if(pipeline) { pass.setPipeline(pipeline); pass.setBindGroup(0, bindGroup0); pass.setBindGroup(1, bindGroup1); pass.draw(3); }
+        pass.end();
+        device.queue.submit([enc.finish()]);
+        requestAnimationFrame(render);
+      }
+      function toggleFullscreen() { /* ... Same ... */ }
+      // (Event listeners same as before)
+      $('fullscreen-btn').onclick = () => document.fullscreenElement ? document.exitFullscreen() : $('canvas-container').requestFullscreen();
+      $('compile-btn').onclick = () => compileShader(editor.getValue());
+      $('panel-toggle').onclick = () => { const p=$('uniforms-panel'), c=$('panel-content'), o=p.style.width!=="24px"; p.style.width=o?"24px":"280px"; c.style.display=o?"none":"flex"; };
+      initWebGPU();
+      function fail(msg) { $('error-message').textContent = msg; $('error-message').classList.remove("hidden"); }
+    </script>
+  </body>
+</html>
