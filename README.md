@@ -1,8 +1,7 @@
-# raymarching
-
-# WebGPU Ray Marching Editor
+# WebGPU Ray Marching Scene Editor
 
 ![Demo](demo.gif)
+Gif demonstrating the Scene Editor
 
 ### [Launch Live Demo](https://suva14.github.io/raymarching/)
 
