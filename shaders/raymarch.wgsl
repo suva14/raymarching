@@ -8,19 +8,17 @@ struct Scene {
     count: u32,
 };
 
-// MISE A JOUR: On remplace "mouse" par "camera"
 struct Uniforms {
     resolution: vec2<f32>,
     time: f32,
     dt: f32,
-    // camera.x = yaw, camera.y = pitch, camera.z = dist
+    // camera.x = yaw, camera.y = pitch, camera.z = dist, w = COUNT
     camera: vec4<f32>, 
 };
 
 @group(0) @binding(0) var<uniform> uni: Uniforms;
 @group(1) @binding(0) var<uniform> scene: Scene;
 
-// --- SDF (Identique) ---
 fn sdSphere(p: vec3<f32>, s: Sphere) -> f32 {
     return length(p - s.transform.xyz) - s.transform.w;
 }
@@ -32,7 +30,10 @@ fn map(p: vec3<f32>) -> vec2<f32> {
     var d = sdPlane(p, 1.0); 
     var mat = 0.0;
     
-    for (var i = 0u; i < scene.count; i = i + 1u) {
+    // Utilisation du count venant du Uniform Buffer (pas du Scene buffer)
+    let count = u32(uni.camera.w);
+
+    for (var i = 0u; i < count; i = i + 1u) {
         let s = scene.spheres[i];
         let sphereDist = sdSphere(p, s);
         if (sphereDist < d) {
@@ -59,7 +60,8 @@ fn get_material_color(mat_id: f32, p: vec3<f32>) -> vec3<f32> {
         return mix(vec3(0.2), vec3(0.9), step(0.5, abs(checker % 2.0)));
     } else {
         let index = u32(mat_id - 1.0);
-        if (index < scene.count) { return scene.spheres[index].color.rgb; }
+        let count = u32(uni.camera.w);
+        if (index < count) { return scene.spheres[index].color.rgb; }
     }
     return vec3(1.0, 0.0, 1.0);
 }
@@ -68,13 +70,10 @@ fn get_material_color(mat_id: f32, p: vec3<f32>) -> vec3<f32> {
 fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     let uv = (fragCoord.xy - uni.resolution * 0.5) / min(uni.resolution.x, uni.resolution.y);
 
-    // --- CAMERA CONTROL (Mise à jour) ---
-    // On utilise les valeurs calculées par le JS (Orbit Control)
     let yaw = uni.camera.x;
     let pitch = uni.camera.y;
     let dist = uni.camera.z;
 
-    // Conversion sphérique vers cartésienne (Orbit)
     let cam_pos = vec3<f32>(
         sin(yaw) * cos(pitch), 
         sin(pitch), 
@@ -88,7 +87,6 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     
     let rd = normalize(cam_right * uv.x - cam_up * uv.y + cam_forward * 1.5);
 
-    // --- RAYMARCHING ---
     var t = 0.0;
     var mat_id = -1.0;
     var hit = false;
@@ -101,7 +99,6 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
         if (t > 100.0) { break; }
     }
 
-    // --- RENDER ---
     let sky = mix(vec3(0.7, 0.8, 0.9), vec3(0.6, 0.7, 0.8), uv.y * 0.5 + 0.5);
     var color = sky;
 
@@ -114,7 +111,6 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
         let amb = 0.2;
         let albedo = get_material_color(mat_id, p);
         
-        // Shadow simple
         var sha = 1.0;
         var st = 0.02;
         for(var j=0; j<32; j++) {
@@ -124,10 +120,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
         }
 
         color = albedo * (diff * sha + amb);
-        // Fog
-        color = mix(sky, color, exp(-t * 0.01));
     }
 
-    // Gamma
     return vec4<f32>(pow(color, vec3(1.0/2.2)), 1.0);
 }
