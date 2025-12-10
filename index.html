@@ -8,13 +8,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/simple.min.js"></script>
-   <style>
-      /* --- CODE MIRROR & THEME --- */
+<style>
+      /* --- THEME GRUVBOX --- */
       .cm-s-gruvbox-dark-hard.CodeMirror { background-color: #1d2021; color: #ebdbb2; height: 100%; }
       .cm-s-gruvbox-dark-hard .CodeMirror-gutters { background-color: #1d2021; border-right: 1px solid #3c3836; }
       .CodeMirror { font-size: 16px !important; }
 
-      /* --- LAYOUT ROBUSTE (Fix pour GitHub Pages) --- */
+      /* --- LAYOUT GLOBAL --- */
       html, body {
         margin: 0;
         padding: 0;
@@ -24,32 +24,41 @@
         background-color: #000;
       }
 
-      /* On force le Flexbox même si Tailwind plante */
       #container {
         display: flex;
         width: 100%;
         height: 100%;
+        flex-direction: row;
       }
 
-      /* Zone Canvas */
+      /* --- CANVAS CONTAINER --- */
       #canvas-container {
-        position: relative; /* CRUCIAL pour que les boutons ne volent pas partout */
+        position: relative;
         width: 50%;
         height: 100%;
         display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: #000;
+        align-items: center;     /* Centre verticalement (crée les marges noires si besoin) */
+        justify-content: center; /* Centre horizontalement */
+        background-color: #000;  /* Couleur des marges */
+        overflow: hidden;
       }
 
-      /* Zone Editeur */
+      /* --- CORRECTION CRUCIALE DU CANVAS --- */
+      canvas {
+        display: block;
+        width: 100%;  /* Force l'affichage à tenir dans la boite */
+        height: 100%; /* Force l'affichage à tenir dans la boite */
+        object-fit: contain; /* Garde le ratio si nécessaire */
+      }
+
+      /* --- EDITEUR --- */
       #editor-container {
         display: flex;
         flex-direction: column;
         width: 50%;
         height: 100%;
         border-left: 1px solid #3c3836;
-        background-color: #1f2937; /* Fallback gray-800 */
+        background-color: #1f2937;
       }
 
       #code-editor-container {
@@ -57,15 +66,8 @@
         height: 100%;
         overflow: hidden;
       }
-
+      
       #code-editor-container .CodeMirror { height: 100%; }
-
-      /* Gestion Portrait / Mobile via CSS standard */
-      @media (orientation: portrait) {
-        #container { flex-direction: column; }
-        #canvas-container { width: 100%; height: 50%; }
-        #editor-container { width: 100%; height: 50%; border-left: none; border-top: 1px solid #3c3836; }
-      }
 
       /* --- UI ELEMENTS --- */
       input[type=range] { width: 100%; height: 4px; accent-color: #fabd2f; cursor: pointer; background: #3c3836; border-radius: 2px; }
@@ -74,8 +76,15 @@
       .obj-item { border-bottom: 1px solid #3c3836; padding: 8px; font-size: 18px; }
       .obj-item:hover { background-color: #282828; }
       .obj-selected { background-color: #32302f; border-left: 4px solid #fabd2f; }
+
+      /* --- MEDIA QUERIES (MOBILE) --- */
+      @media (orientation: portrait) {
+        #container { flex-direction: column; }
+        #canvas-container { width: 100%; height: 50%; }
+        #editor-container { width: 100%; height: 50%; border-left: none; border-top: 1px solid #3c3836; }
+      }
     </style>
-  </head>
+</head>
   <body class="font-mono bg-gray-900 text-white">
     
     <div id="container" class="flex w-full h-full portrait:flex-col landscape:flex-row">
